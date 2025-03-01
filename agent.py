@@ -11,9 +11,14 @@ from music21 import converter, midi  # Import music21 for MIDI to MusicXML conve
 
 
 MISTRAL_MODEL = "mistral-large-latest"
-SYSTEM_PROMPT = "You are a helpful assistant."     # PUT CONTEXT OF THE SYSTEM HERE
-
-
+SYSTEM_PROMPT = """You are a music transcriber whose primary task is to help a user convert some given audio into sheet music. 
+First, you should determine the exact file of the music that needs to be transcribed, and try to redirect the conversation back to this topic if the user goes off course.
+If you finally get what looks to be a valid, non-joking file to the audio file, then output the following text with no other information:
+```
+GREAT! This is the confirmed filepath: {filepath provided}
+```
+where {filepath provided} is the actual file provided by the user.
+"""
 
 
 def bandpass_filter(audio_path, lowcut=300, highcut=3000, fs=44100, order=5):
@@ -30,41 +35,70 @@ def bandpass_filter(audio_path, lowcut=300, highcut=3000, fs=44100, order=5):
     wavfile.write(audio_path, sr, filtered_data.astype(data.dtype))
 
 
+
+
+
 class MistralAgent:
     def __init__(self):
         MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 
         self.client = Mistral(api_key=MISTRAL_API_KEY)
 
-    async def run(self, message: discord.Message):
-        # The simplest form of an agent
-        # Send the message's content to Mistral's API and return Mistral's response
 
+    async def indicate_loading(self, loading_message):
         messages = [
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": message.content},
+            {"role": "system", "content": f"Give me some loading text indicating that the system is currently doing the following: {loading_message}"},
         ]
+        response = await self.client.chat.complete_async(
+            model=MISTRAL_MODEL,
+            messages=messages,
+        )
+        return response.choices[0].message.content
+    
+
+    async def ask_whether_splitting_necessary(self, ask_msg):
+        messages = [
+            {"role": "system", "content": ask_msg},
+        ]
+        response = await self.client.chat.complete_async(
+            model=MISTRAL_MODEL,
+            messages=messages,
+        )
+        return response.choices[0].message.content
+    
+
+    async def run_with_history(self, message: discord.Message, history: list):
+        """
+        Process the message with the history of previous messages.
+        """
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        for msg in history:
+            messages.append({"role": "user", "content": msg})
 
         response = await self.client.chat.complete_async(
             model=MISTRAL_MODEL,
             messages=messages,
         )
 
-        return response.choices[0].message.content
-    
+        msg_content = response.choices[0].message.content
 
-
-
-    def validate_file_path(self, file_path: str) -> bool:
-        """
-        Validates the file path using Mistral API.
-        """
-        if os.path.isfile(file_path):
-            print(f"Valid file path: {file_path}")
-            return True
+        # Check if the response contains a valid file path
+        if msg_content.startswith("GREAT!"):
+            # Extract the file path from the response
+            file_path = msg_content.split(" ")[-1].strip()
+            print(f"Valid file path confirmed: {file_path}")
+            return f"Valid file path confirmed: {file_path}"
         else:
-            print(f"Invalid file path: {file_path}")
-            return False
+            return msg_content
+
+
+
+            ##### NOTE: NEED TO HANDLE EVERYTHING IN THIS HISTORY PROMPT. BASICALLY SHOULD TRY TO UNDERSTAND A BUNCH OF USER REQUIREMENTS FIRST, AND THEN RUN ALL OF THE COMMANDS AT ONCE ONE AFTER ANOTHER!
+
+
+
+
+    
 
     def separate_audio(self, file_path: str):
         """
