@@ -57,6 +57,9 @@ async def on_message(message: discord.Message):
     logger.info(f"Processing message from {message.author}: {message.content}")
     response = await agent.run(message)
 
+
+    print(response)
+
     # Send the response back to the channel
     await message.reply(response)
 
@@ -76,4 +79,52 @@ async def ping(ctx, *, arg=None):
 
 
 # Start the bot, connecting it to the gateway
-bot.run(token)
+# bot.run(token)      # UNCOMMENT THIS TO INTEGRATE IT INTO DISCORD BOT
+
+def main():
+    while True:
+        # Ask for the path to the song file
+        file_path = input("Enter the path to the song file: ")
+
+        # 1) Validate the file path, and when you do run the audio separation on the files
+        if agent.validate_file_path(file_path):
+            # If valid, proceed with audio separation
+            proceed_audio = input("Do audio separation?")
+            proceed_audio = (proceed_audio == "yes")
+            if proceed_audio:
+                print("Proceeding with audio separation...")
+                agent.separate_audio(file_path)
+
+            # 2) Ask the user which stem to convert to sheet music
+            while True:
+                if proceed_audio:
+                    stem_choice = input("Which stem do you want to convert to sheet music? (bass, drums, vocals, other): ").strip().lower()
+                    stem_file_path = os.path.join(os.path.dirname(file_path), f'separated_audio_{os.path.basename(file_path)}', f'{stem_choice}.wav')
+                else:
+                    stem_file_path = file_path
+
+                if os.path.isfile(stem_file_path):
+                    print(f"Converting {stem_file_path} to MIDI...")
+                    # agent.convert_to_midi(stem_file_path)
+
+                    # Confirm with the user to proceed to convert MIDI to MuseScore
+                    confirm = input("Do you want to convert the MIDI to sheet music? (yes/no): ").strip().lower()
+                    if confirm == "yes":
+                        print(stem_file_path)
+
+
+                        agent.convert_midi_to_musescore(stem_file_path.replace('.mp3', '_basic_pitch.mid'))
+                        print("Conversion to sheet music completed.")
+                    else:
+                        print("Conversion to sheet music canceled.")
+                    break
+                else:
+                    print(f"Invalid choice or file not found for {stem_file_path}. Please choose again.")
+            break
+        else:
+            # If invalid, prompt again
+            print("Please enter a valid file path.")
+
+
+if __name__ == "__main__":
+    main()
