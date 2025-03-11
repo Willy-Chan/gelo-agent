@@ -17,15 +17,15 @@ If you finally get what looks to be a valid, non-joking file to the audio file, 
 bass or drums or vocals or other of the song transcribed. Or if the user indicates that they don't care/it's not relevant or the piece is really simple, just default to the original audio file without any separation.
 Next, try to understand whether or not they want the MIDI file, the Musescore file, and the sheet music PDF. When you are sufficiently satisfies, just output the following text verbatim:
 
-`
+
 FILEPATH: {user filepath}
 SPECIFIC_TRACK: {should be bass/drums/vocals/other/original}
 WANT_MIDI_FILE: {true/false}
 WANT_MUSESCORE_FILE: {true/false}
 WANT_SHEET_MUSIC_PDF: {true/false}
-`
 
-The fields in brackets should be replaced with the user's responses.
+
+The fields in brackets should be replaced with the user's responses. It should just be those pieces of text and nothing else.
 """
 
 
@@ -110,7 +110,7 @@ class MistralAgent:
 
     def separate_audio(self, file_path: str):
         """
-        Separates the audio file into different stems/tracks using Demucs and prints the paths to the output files.
+        Separates the audio file into different stems/tracks using Demucs and returns the paths to the output files.
         """
         output_dir = os.path.join(os.path.dirname(file_path), f'separated_audio_{os.path.basename(file_path)}')
         os.makedirs(output_dir, exist_ok=True)
@@ -119,10 +119,14 @@ class MistralAgent:
         command = f"demucs --out {output_dir} {file_path}"
         subprocess.run(command, shell=True, check=True)
 
-        # Print the paths to the separated files
+        # Collect the paths to the separated files
+        separated_files = {}
         for root, _, files in os.walk(output_dir):
             for file in files:
-                print(os.path.join(root, file))
+                track_name = os.path.splitext(file)[0]
+                separated_files[track_name] = os.path.join(root, file)
+
+        return separated_files
 
 
 
@@ -149,7 +153,7 @@ class MistralAgent:
             bandpass_filter(preprocessed_audio_path)   # basically eliminate unnatural non-vocal frequencies
             
             # Convert the preprocessed audio to MIDI
-            midi_output_path = os.path.splitext(preprocessed_audio_path)[0] + ".mid"
+            midi_output_path = os.path.splitext(preprocessed_audio_path)[0] + "_basic_pitch.mid"
             predict_and_save(
                 [preprocessed_audio_path],
                 os.path.dirname(audio_file_path),
@@ -163,9 +167,10 @@ class MistralAgent:
             # Delete the intermediate preprocessed audio file
             # os.remove(preprocessed_audio_path)
             print(f"MIDI file saved at: {midi_output_path}")
+            return midi_output_path
 
         else:
-            midi_output_path = os.path.splitext(audio_file_path)[0] + ".mid"
+            midi_output_path = os.path.splitext(audio_file_path)[0] + "_basic_pitch.mid"
             predict_and_save(
                 [audio_file_path],
                 os.path.dirname(audio_file_path),
@@ -180,6 +185,7 @@ class MistralAgent:
             # os.remove(preprocessed_audio_path)
 
             print(f"MIDI file saved at: {midi_output_path}")
+            return midi_output_path
         
 
     def convert_midi_to_musescore(self, midi_file_path: str):

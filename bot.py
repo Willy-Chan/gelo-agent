@@ -50,7 +50,40 @@ async def on_message(message: discord.Message):
 
     # Process the message with the agent
     response = await agent.run_with_history(message, message_history[message.channel.id])
-    await message.channel.send(response)
+    if "FILEPATH:" in response and "SPECIFIC_TRACK:" in response:
+        # Parse the response
+        lines = response.split('\n')
+        print(lines)
+        file_path = lines[0].split(": ")[1].strip()
+        specific_track = lines[1].split(": ")[1].strip()
+        want_midi = lines[2].split(": ")[1].strip().lower() == "true"
+        want_musescore = lines[3].split(": ")[1].strip().lower() == "true"
+        want_pdf = lines[4].split(": ")[1].strip().lower() == "true"
+        print(file_path)
+        print(specific_track)
+        print(want_midi)
+        print(want_musescore)
+        print(want_pdf)
+
+        # Determine if separation is needed
+        if specific_track != "original":
+            await message.channel.send("Separating audio...")
+            separated_files = agent.separate_audio(file_path)
+            track_file_path = separated_files.get(specific_track)
+        else:
+            track_file_path = file_path
+
+        # Convert to MIDI if needed
+        if want_midi:
+            await message.channel.send("Converting to MIDI...")
+            midi_file_path = agent.convert_to_midi(track_file_path)
+
+        # Convert to MuseScore or PDF if needed
+        if want_musescore or want_pdf:
+            await message.channel.send("Converting to sheet music...")
+            agent.convert_midi_to_musescore(midi_file_path)
+    else:
+        await message.channel.send(response)
 
 @bot.command(name="ping", help="Pings the bot.")
 async def ping(ctx, *, arg=None):
@@ -61,3 +94,8 @@ async def ping(ctx, *, arg=None):
 
 # Start the bot
 bot.run(token)
+
+# if __name__ == '__main__':
+#     agent = MistralAgent()
+#     filepathh = "/home/willy/Desktop/projects/gelo_agent/gelo-agent/songs/separated_audio_tweak.mp3/htdemucs/tweak/vocals_basic_pitch.mid"
+#     agent.convert_midi_to_musescore(filepathh)
