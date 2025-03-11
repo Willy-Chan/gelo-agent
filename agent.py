@@ -18,7 +18,7 @@ bass or drums or vocals or other of the song transcribed. Or if the user indicat
 
 Next, try to understand whether or not they want the MIDI file, the Musescore file, and the sheet music PDF.  
 Remember that it is NOT possible to produce the sheet music PDF if the user does not want the musescore file, since producing the sheet music PDF requires creating the musescore file.
-Try to get these attribute one at a time: do not ask for all of them at once.
+Try to get these attributes one at a time: do not ask for all of them at once.
 
 
 When you are sufficiently satisfied, just output the following text verbatim:
@@ -198,16 +198,19 @@ class MistralAgent:
         """
         Converts a MIDI file to a MusicXML file and then to a MuseScore file.
         """
-        # # Convert MusicXML to MuseScore using MuseScore's command-line interface
-        # musescore_output_path = os.path.splitext(midi_file_path)[0] + ".mscz"
-        # command = f"musescore -o {musescore_output_path} {midi_file_path}"
-        # subprocess.run(command, shell=True, check=True)
-        # print(f"MuseScore file saved at: {musescore_output_path}")
+        # Convert MIDI to MusicXML
+        midi_score = converter.parse(midi_file_path)
+        musicxml_output_path = os.path.splitext(midi_file_path)[0] + ".musicxml"
+        midi_score.write('musicxml', fp=musicxml_output_path)
+        print(f"MusicXML file saved at: {musicxml_output_path}")
 
+        # Convert MusicXML to PDF using MuseScore's command-line interface
         pdf_output_path = os.path.splitext(midi_file_path)[0] + ".pdf"
         command = f"musescore -o {pdf_output_path} {midi_file_path}"
         subprocess.run(command, shell=True, check=True)
         print(f"PDF file saved at: {pdf_output_path}")
+
+        return musicxml_output_path, pdf_output_path
 
 
 

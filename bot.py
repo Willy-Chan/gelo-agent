@@ -1,6 +1,8 @@
 import os
 import discord
 import logging
+import aiohttp
+import asyncio
 from discord.ext import commands
 from dotenv import load_dotenv
 from agent import MistralAgent
@@ -48,42 +50,81 @@ async def on_message(message: discord.Message):
     if len(message_history[message.channel.id]) > 10:
         message_history[message.channel.id].pop(0)
 
+    # Check for MP3 file attachment
+    if message.attachments:
+        for attachment in message.attachments:
+            if attachment.filename.endswith('.mp3'):
+                # Download the MP3 file
+                file_path = await download_file(attachment)
+                await message.channel.send(f"MP3 file received and saved as {file_path}")
+
+                # Add the file path to the message history for context
+                message_history[message.channel.id].append(f"FILEPATH: {file_path}")
+
+                # Process the message with the agent
+                response = await agent.run_with_history(message, message_history[message.channel.id])
+                await message.channel.send(response)
+                return
+
     # Process the message with the agent
     response = await agent.run_with_history(message, message_history[message.channel.id])
     if "FILEPATH:" in response and "SPECIFIC_TRACK:" in response:
         # Parse the response
         lines = response.split('\n')
-        print(lines)
         file_path = lines[0].split(": ")[1].strip()
         specific_track = lines[1].split(": ")[1].strip()
         want_midi = lines[2].split(": ")[1].strip().lower() == "true"
         want_musescore = lines[3].split(": ")[1].strip().lower() == "true"
         want_pdf = lines[4].split(": ")[1].strip().lower() == "true"
-        print(file_path)
-        print(specific_track)
-        print(want_midi)
-        print(want_musescore)
-        print(want_pdf)
+
+        # List to collect file paths to send
+        files_to_send = []
 
         # Determine if separation is needed
         if specific_track != "original":
-            await message.channel.send("Separating audio...")
+            loading_message = await message.channel.send("Separating audio... 🔄")
             separated_files = agent.separate_audio(file_path)
             track_file_path = separated_files.get(specific_track)
+            await loading_message.edit(content="Audio separated! ✅")
+            files_to_send.append(track_file_path)
         else:
             track_file_path = file_path
 
         # Convert to MIDI if needed
         if want_midi:
-            await message.channel.send("Converting to MIDI...")
+            loading_message = await message.channel.send("Converting to MIDI... 🎶")
             midi_file_path = agent.convert_to_midi(track_file_path)
+            await loading_message.edit(content="MIDI conversion complete! ✅")
+            files_to_send.append(midi_file_path)
 
         # Convert to MuseScore or PDF if needed
         if want_musescore or want_pdf:
-            await message.channel.send("Converting to sheet music...")
-            agent.convert_midi_to_musescore(midi_file_path)
+            loading_message = await message.channel.send("Converting to sheet music... 🎼")
+            musicxml_output_path, pdf_file_path = agent.convert_midi_to_musescore(midi_file_path)
+            await loading_message.edit(content="Sheet music conversion complete! ✅")
+            files_to_send.append(musicxml_output_path)
+            files_to_send.append(pdf_file_path)
+
+        # Send all collected files
+        for file_path in files_to_send:
+            print(file_path)
+            await message.channel.send(file=discord.File(file_path))
     else:
         await message.channel.send(response)
+
+async def download_file(attachment: discord.Attachment) -> str:
+    """
+    Downloads a file from a Discord attachment and returns the local file path.
+    """
+    file_path = os.path.join("downloads", attachment.filename)
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+    async with aiohttp.ClientSession() as session:
+        async with session.get(attachment.url) as resp:
+            if resp.status == 200:
+                with open(file_path, 'wb') as f:
+                    f.write(await resp.read())
+    return file_path
 
 @bot.command(name="ping", help="Pings the bot.")
 async def ping(ctx, *, arg=None):
