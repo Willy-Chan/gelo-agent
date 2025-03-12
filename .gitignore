@@ -11,3 +11,5 @@ songs/
 
 # Secrets
 .env
+
+downloads/
